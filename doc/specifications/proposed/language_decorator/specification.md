@@ -15,10 +15,10 @@ their locale the API should return German content. The developer might
 indicate a prioritized language list which defines the fallback if
 content is not available in German, like:
 
--   de\_DE
--   de\_AT
--   en\_GB
--   …
+- de\_DE
+- de\_AT
+- en\_GB
+- …
 
 This means content should only be fetched and returned in "en\_GB" if
 the content is not available in neither "de\_DE", nor in "de\_AT".
@@ -37,24 +37,14 @@ alternative implementations.
 
 Realated:
 
--   WIP-PR: <https://github.com/ezsystems/ezpublish-kernel/pull/1932>
--   Netgen Site API: <https://github.com/netgen/ezplatform-site-api>
+- WIP-PR: <https://github.com/ezsystems/ezpublish-kernel/pull/1932>
+- Netgen Site API: <https://github.com/netgen/ezplatform-site-api>
 
 ### Implementation Notes
 
--   Check if PAPI modifications can be implemented as a pure decorator
--   Check if value object constraints can be implemented as decorators,
-    too
-
-TODO
-----
-
--   \[ \] Analyze ways to implement prioritized languages
--   \[ \] Analyze decorator omitting the requirement to specify
-    languages at all
--   \[ \] Check which methods are missing language parameters in SPI
--   \[ \] Check what can be done on SPI and value object level to return
-    only one single language for content
+- Check if PAPI modifications can be implemented as a pure decorator
+- Check if value object constraints can be implemented as decorators,
+  too
 
 Decorator Stacking / Configuration
 ----------------------------------
@@ -63,7 +53,7 @@ Besides the simplification of the language API there are other
 requirements for the PAPI which all can make use of extracting the
 different concerns beside storing the content into decorators.
 
-![image](decorator.svg)
+![PAPI Decorators](decorator.svg)
 
 Right now there already is a decorator to implement Signals on top of
 the PAPI.
@@ -96,39 +86,39 @@ To implement this there are a couple of tasks to execute:
 
 There are a couple of benefits behind this approach:
 
--   **Extensibility**
+- **Extensibility**
 
-    If there are new concerns it gets more obvious that those should be
-    added as another decorator and not be implemented as changes to the
-    existing implementation.
+  If there are new concerns it gets more obvious that those should be
+  added as another decorator and not be implemented as changes to the
+  existing implementation.
 
--   **Simplicity**
+- **Simplicity**
 
-    The code of decorators working on just one concern (permissions) is
-    usually a lot lot simpler then an implementation which implements
-    persistence, permissions and caching in the same method. In practice
-    this means that a lot of private methods like `internalCreateRole`
-    can be moved into their own classes.
+  The code of decorators working on just one concern (permissions) is
+  usually a lot lot simpler then an implementation which implements
+  persistence, permissions and caching in the same method. In practice
+  this means that a lot of private methods like `internalCreateRole`
+  can be moved into their own classes.
 
--   **Testability**
+- **Testability**
 
-    If one decorator only fulfils one single concern we can test those
-    decorators more easily which will lead to additional stability.
+  If one decorator only fulfils one single concern we can test those
+  decorators more easily which will lead to additional stability.
 
--   **Composability**
+- **Composability**
 
-    Being able to compose and use your own decorator stack enables us to
-    implement new use cases like importers in a far more sensible way
-    then right now.
+  Being able to compose and use your own decorator stack enables us to
+  implement new use cases like importers in a far more sensible way
+  then right now.
 
 There is also a drawback to this approach:
 
--   **Layering**
+- **Layering**
 
-    More layers can make it harder to debug the code. Each layer gets
-    less complex for itself though which makes them less error prone.
-    Users will seldomly have to debug every layer. It can still make the
-    overall system harder to understand.
+  More layers can make it harder to debug the code. Each layer gets
+  less complex for itself though which makes them less error prone.
+  Users will seldomly have to debug every layer. It can still make the
+  overall system harder to understand.
 
 Language Selection Logic
 ------------------------
@@ -222,29 +212,29 @@ developers perspective this usually also leads to really cluttered
 
 Risks:
 
--   There are some value objects which are returned which contain public
-    properties while they probably shouldn't, like the `SearchResult`.
-    As long as all values affected by translations properly use
-    protected properties to simulate read-only access this will work.
-    Problematic classes could be:
+- There are some value objects which are returned which contain public
+  properties while they probably shouldn't, like the `SearchResult`.
+  As long as all values affected by translations properly use
+  protected properties to simulate read-only access this will work.
+  Problematic classes could be:
 
-        Content/SectionStruct.php
-        21:    public $identifier;
-        28:    public $name;
+      Content/SectionStruct.php
+      21:    public $identifier;
+      28:    public $name;
 
-        User/Limitation.php
-        52:    public $limitationValues = array();
+      User/Limitation.php
+      52:    public $limitationValues = array();
 
-    The only class I found which may really be affected by the mentioned
-    problem is the `SectionStruct`\_\_. But since the `$name` is
-    documented as a string it is probably not translated and we are good
-    to go.
+  The only class I found which may really be affected by the mentioned
+  problem is the `SectionStruct`. But since the `$name` is
+  documented as a string it is probably not translated and we are good
+  to go.
 
--   [Traits](https://qafoo.com/blog/072_utilize_dynamic_dispatch.html)
-    are generally considered bad practice. To work around a missing
-    language feature we can assume this is fine in this case. We are
-    doing the same already with the `ValueObject` base class, which also
-    could be a trait.
+- [Traits](https://qafoo.com/blog/072_utilize_dynamic_dispatch.html)
+  are generally considered bad practice. To work around a missing
+  language feature we can assume this is fine in this case. We are
+  doing the same already with the `ValueObject` base class, which also
+  could be a trait.
 
 An important benefit of this approach is that it will work even if other
 layers also return different values. If we re-construct the object into
