@@ -247,5 +247,123 @@ besides what already exists?
 SPI Analysis
 ------------
 
-@TODO: Where are language parameters missing? What can be done to
-optimize loading of data?
+List of values containing translated properties (`$name`, `$description`, …):
+
+- [Content/Field](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/Field.php)
+- [Content/ObjectState](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/ObjectState.php)
+- [Content/ObjectState/Group](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/ObjectState/Group.php)
+- [Content/Type](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/Type.php)
+- [Content/Type/FieldDefinition](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/Type/FieldDefinition.php)
+- [Content/Type/Group](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/Type/Group.php)
+- [Content/UrlAlias](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/UrlAlias.php)
+- [Content/VersionInfo](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/Content/VersionInfo.php)
+- [User/Role](/ezsystems/ezpublish-kernel/tree/master/eZ/Publish/SPI/Persistence/User/Role.php)
+
+Methods returning values containing translations:
+
+    Content\ObjectState\Handler
+
+    ::loadGroup($groupId): \eZ\Publish\SPI\Persistence\Content\ObjectState\Group
+    ::loadGroupByIdentifier($identifier): \eZ\Publish\SPI\Persistence\Content\ObjectState\Group
+    ::loadAllGroups($offset = 0, $limit = -1): \eZ\Publish\SPI\Persistence\Content\ObjectState\Group[]
+    ::loadObjectStates($groupId): \eZ\Publish\SPI\Persistence\Content\ObjectState[]
+    ::load($stateId): \eZ\Publish\SPI\Persistence\Content\ObjectState
+    ::loadByIdentifier($identifier, $groupId): \eZ\Publish\SPI\Persistence\Content\ObjectState
+    ::getContentState($contentId, $stateGroupId): \eZ\Publish\SPI\Persistence\Content\ObjectState
+
+    Content\UrlAlias\Handler
+
+    ::listGlobalURLAliases($languageCode = null, $offset = 0, $limit = -1): \eZ\Publish\SPI\Persistence\Content\UrlAlias[]
+    ::listURLAliasesForLocation($locationId, $custom = false): \eZ\Publish\SPI\Persistence\Content\UrlAlias[]
+    ::lookup($url): \eZ\Publish\SPI\Persistence\Content\UrlAlias
+    ::loadUrlAlias($id): \eZ\Publish\SPI\Persistence\Content\UrlAlias
+
+    Content\Handler
+
+    ::load($id, $version, array $translations = null): \eZ\Publish\SPI\Persistence\Content
+    ::loadVersionInfo($contentId, $versionNo): \eZ\Publish\SPI\Persistence\Content\VersionInfo
+    ::loadDraftsForUser($userId): \eZ\Publish\SPI\Persistence\Content\VersionInfo[]
+    ::listVersions($contentId, $status = null, $limit = -1): \eZ\Publish\SPI\Persistence\Content\VersionInfo[]
+
+    Content\Type\Handler
+
+    ::loadGroup($groupId): \eZ\Publish\SPI\Persistence\Content\Type\Group
+    ::loadGroupByIdentifier($identifier): \eZ\Publish\SPI\Persistence\Content\Type\Group
+    ::loadAllGroups(): \eZ\Publish\SPI\Persistence\Content\Type\Group[]
+    ::loadContentTypes($groupId, $status = Type::STATUS_DEFINED): \eZ\Publish\SPI\Persistence\Content\Type[]
+    ::load($contentTypeId, $status = Type::STATUS_DEFINED): \eZ\Publish\SPI\Persistence\Content\Type
+    ::loadByIdentifier($identifier): \eZ\Publish\SPI\Persistence\Content\Type
+    ::loadByRemoteId($remoteId): \eZ\Publish\SPI\Persistence\Content\Type
+    ::getFieldDefinition($id, $status): \eZ\Publish\SPI\Persistence\Content\Type\FieldDefinition
+
+    User\Handler
+
+    ::loadRole($roleId, $status = Role::STATUS_DEFINED): \eZ\Publish\SPI\Persistence\User\Role
+    ::loadRoleByIdentifier($identifier, $status = Role::STATUS_DEFINED): \eZ\Publish\SPI\Persistence\User\Role
+    ::loadRoleDraftByRoleId($roleId): \eZ\Publish\SPI\Persistence\User\Role
+    ::loadRoles(): \eZ\Publish\SPI\Persistence\User\Role[]
+
+Only one method (`Content\Handler::load`) of these already has a
+`$translations` parameter. Each of these methods could receive a
+`$translations` parameter defaulting to `null` to limit the fetched
+translations to a single requested translation.
+
+### Soft Migration
+
+The problem with a sensible migration path is that all properties containing
+translations are declared as `string[]` now and just contain a hashmap like:
+
+    array(
+        'eng_GB' => 'English string',
+        'ger_DE' => 'Deutsche Zeichenkette',
+        …
+    )
+
+If we now want to make it possible to access the translations in a simpler way
+and make used of the prioritized language list mentioned before we must change
+this data structure. We'd suggest to use a `TranslatedString` object making use
+of an `ArrayObject` extension to maximize compatibility with the existing
+arrays. Even there are some array functions which do not work sensibly with an
+`ArrayObject` this should be good enough.
+
+The `TranslatedString` can the also aggregate the prioritized language list and
+implement a `__toString` method to return a plain correctly translated string
+if accessed this way:
+
+    class TranslatedString extends \ArrayObject
+    {
+        pivate $languages;
+
+        public function __construct(array $strings, array $languages = [])
+        {
+            parent::__construct($strings);
+            $this->languages = $languages;
+        }
+
+        public function __toString()
+        {
+            // @TODO: Implement translation resolving logic
+            return $translatedString;
+        }
+    }
+
+All `string[]` type hints can be changed to `TranslatedString` and it can be
+used anywhere. The `TranslatedString` can and should also work with sparsely
+fetched translations in cases only one translation has been requested and
+loaded.
+
+#### Backwards Compatibility
+
+This is a BC break since there are some functions (mainly sorting) which work
+on plain PHP arrays but not with the `ArrayObject`. We can assume that the
+translations are mostly accessed as hash maps and maybe interated thus we
+should be fine.
+
+#### PAPI Changes
+
+The `TranslatedString` should probably also be propagated through the PAPI to
+the developer using the API. This makes the BC break more critical but also
+eases using the API. Together with the prioritized language list from the
+language decorator and the `TranslatedString` it should resolve a whole class
+of usage issues of the PAPI.
+
