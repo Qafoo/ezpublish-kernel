@@ -156,6 +156,8 @@ usecases. Every object containign a `$name` of `$description` array probably
 could get a method to easily resolve those. For a different (probably more
 sensible) approach see the `TranslatedString` below.
 
+### Optional Value Object Enhancement
+
 If we must enhance the value objects in this layer, we suggest an approach like
 this, which fulfils the Liskov Substitution Principle:
 
@@ -249,9 +251,6 @@ layers also return different values. If we re-construct the object into
 our custom implementation without dispatching anything to the original
 implementation those potential additional information would be lost.
 
-@TODO: Loading / wrappings fields? What are sensible helpers here
-besides what already exists?
-
 SPI Analysis
 ------------
 
@@ -313,10 +312,60 @@ Methods returning values containing translations:
 
 Only one method (`Content\Handler::load`) of these already has a
 `$translations` parameter. Each of these methods could receive a
-`$translations` parameter defaulting to `null` to limit the fetched
-translations to a single requested translation.
+`$translations` parameter (defaulting to `null`) to limit the fetched
+translations to a defined list or a single translation.
 
-### Soft Migration
+### Migrating Requested Languages
+
+We generally want to request less data (in less languages) from the SPI.
+Usually the content should only be returned in one single language.
+
+The concept we want to transport is the following:
+
+* Prioritized language (example: `ger_DE`)
+* Secondary language (example: `fra_FR`)
+* …
+
+* Configured main language (example: `eng_GB')
+
+Depending on the languages available for a given content node the resolving
+should work like:
+
+* If content is available in `ger_DE`, only return content in `ger_DE`.
+
+* If content is not available in `ger_DE` but in `fra_FR`, return content only
+  in `fra_FR`.
+
+* If content is available in neither `ger_DE` nor `fra_FR` return content in
+  `eng_GB` which should always be available, otherwise return "Not Found".
+
+The SPI currently allows to pass an `array $translations` argument to one
+single method (`Content\Handler::load()`). The mentioned language concept is
+hard to express using an array, especially in a backwards compatibile way.
+
+To maintain backwards compatibility we must ensure that the usage of the
+publically facing API does not change and still works. If a user provides a
+`$translations` array they intend to fetch multiple languages. This must still
+work. On the other hand we want this decorator to provide a
+`PrioritizedLanguage` object which shall result in less languages fetched.
+
+We therefor must remove the `array` type hint. With PHP 7.1 we might be able to
+add a [`iterable`](https://secure.php.net/manual/en/migration71.new-features.php#migration71.new-features.iterable-pseudo-type)
+type hint again since the `PrioritizedLanguage` object shall fulfill the
+`Traversable` interface.
+
+The SPI should the implement the logic to either fetch only one language
+(`PrioritizedLanguage`), a couple of defined languages (`array`) or all
+available languages (`null`).
+
+Sooner or later all methods mentioned above might be migrated and extended with
+such a `$translations` parameter. We should prioritize the methods where we
+expect the largest performance benefits for the overall system. For entities
+where (with the current storage) all languages are always fetched anyways
+(mostly `$name` and `$description`) we might postpone it for anthoer while or
+filter the languages on client side (see `TranslatedString`).
+
+### Soft Migration on Return Values
 
 The problem with a sensible migration path is that all properties containing
 translations are declared as `string[]` now and just contain a hashmap like:
@@ -374,4 +423,24 @@ the developer using the API. This makes the BC break more critical but also
 eases using the API. Together with the prioritized language list from the
 language decorator and the `TranslatedString` it should resolve a whole class
 of usage issues of the PAPI.
+
+Language Decorator BC Break
+---------------------------
+
+Using the Language Decorator results in a different behaviour of the PAPI.
+Usually only one single language version will be returned instead of all
+languages like it is right now. This is a behavioural change which is not a
+formal BC break since each API and every value object still maintains
+compatibility and just contain less data.
+
+If we assume that developers are iterating over language versions right now or
+requesting defined languages expecting that this language might not be set, no
+code should break but it might be that less content is shown in some cases.
+
+If code right now assumes that the main language is always set and we stop
+fetching the main language because another prioritized language is available
+**this** might break some code.
+
+As this document suggest using the language decorator will be optional so
+people could still be using the undecorated implementation in this case.
 
