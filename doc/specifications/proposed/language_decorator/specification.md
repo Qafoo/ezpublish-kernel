@@ -142,14 +142,22 @@ Returned Content Objects
 ------------------------
 
 The current prototype violates the Liskov Substitution Principle by
-returning different values then the decorated classes would return.
+returning different values then the decorated classes would return. We **must
+not** return different objects then the originals in a decorator:
 
 The returned values must fulfill the full interface, which basically
 means containing all public properties, which the already existing
 classes contain. Since we decorate an API it must be possible to use it
 exactly like the earlier API.
 
-We suggest to use value objects implementing the following principle:
+The original value object should be sufficiently convinient to use. We might
+want to add more convience methods to them from time to time for common
+usecases. Every object containign a `$name` of `$description` array probably
+could get a method to easily resolve those. For a different (probably more
+sensible) approach see the `TranslatedString` below.
+
+If we must enhance the value objects in this layer, we suggest an approach like
+this, which fulfils the Liskov Substitution Principle:
 
     trait ValueDecorator
     {
