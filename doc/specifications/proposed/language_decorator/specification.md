@@ -156,101 +156,6 @@ usecases. Every object containign a `$name` of `$description` array probably
 could get a method to easily resolve those. For a different (probably more
 sensible) approach see the `TranslatedString` below.
 
-### Optional Value Object Enhancement
-
-If we must enhance the value objects in this layer, we suggest an approach like
-this, which fulfils the Liskov Substitution Principle:
-
-    trait ValueDecorator
-    {
-        protected $aggregate;
-
-        public function __get($property)
-        {
-            return $this->aggregate->$property;
-        }
-
-        public function __set($property, $value)
-        {
-            return $this->aggregate->$property = $value;
-        }
-
-        // @TODO: Same for __isset, __clone, …
-
-        public function getAggregate()
-        {
-            return $this->aggregate;
-        }
-    }
-
-This works for all value objects with read-only properties which are
-usually the value objects returned by the PAPI. This decoration approach
-with the automatic dispatching does not work with value objects with
-public properties (update and create structs).
-
-We can then implement concrete value object extensions, like:
-
-    class ContentInfo extends OriginalContentInfo
-    {
-        uses ValueDecorator;
-
-        protected $languageResolver;
-
-        public function __construct(
-            OriginalContentInfo $aggregate,
-            LanguageResolver $languageResolver
-        ) {
-            $this->aggregate = $aggregate;
-            $this->languageResolver = $languageResolver;
-        }
-
-        public function getName()
-        {
-            return $this->languageResolver->resolveName($this->aggregate);
-        }
-
-        // @TODO: More convinience accessors…
-    }
-
-This way the extended `ContentInfo` can work exactly like the original
-one and add additional methods maintaining full compatibility.
-
-Optionally we could also extend the `__get()` method to return computed
-values on property access. While this leads to a clean API from a
-developers perspective this usually also leads to really cluttered
-`__get()` methods.
-
-Risks:
-
-- There are some value objects which are returned which contain public
-  properties while they probably shouldn't, like the `SearchResult`.
-  As long as all values affected by translations properly use
-  protected properties to simulate read-only access this will work.
-  Problematic classes could be:
-
-      Content/SectionStruct.php
-      21:    public $identifier;
-      28:    public $name;
-
-      User/Limitation.php
-      52:    public $limitationValues = array();
-
-  The only class I found which may really be affected by the mentioned
-  problem is the `SectionStruct`. But since the `$name` is
-  documented as a string it is probably not translated and we are good
-  to go.
-
-- [Traits](https://qafoo.com/blog/072_utilize_dynamic_dispatch.html)
-  are generally considered bad practice. To work around a missing
-  language feature we can assume this is fine in this case. We are
-  doing the same already with the `ValueObject` base class, which also
-  could be a trait.
-
-An important benefit of this approach is that it will work even if other
-layers also return different values. If we re-construct the object into
-our custom implementation without dispatching anything to the original
-implementation those potential additional information would be lost.
-
 SPI Analysis
 ------------
 
@@ -343,20 +248,61 @@ The SPI currently allows to pass an `array $translations` argument to one
 single method (`Content\Handler::load()`). The mentioned language concept is
 hard to express using an array, especially in a backwards compatibile way.
 
-To maintain backwards compatibility we must ensure that the usage of the
-publically facing API does not change and still works. If a user provides a
-`$translations` array they intend to fetch multiple languages. This must still
-work. On the other hand we want this decorator to provide a
-`PrioritizedLanguage` object which shall result in less languages fetched.
+Right now the array implies to fetch all languages which are given in the
+array. In most cases people just want to fetch one single language and define
+fallbacks to other languages. To make it easy to distinguish between both
+concepts we will define two new value objects:
 
-We therefor must remove the `array` type hint. With PHP 7.1 we might be able to
-add a [`iterable`](https://secure.php.net/manual/en/migration71.new-features.php#migration71.new-features.iterable-pseudo-type)
-type hint again since the `PrioritizedLanguage` object shall fulfill the
-`Traversable` interface.
+    class LangaugesFetchAll extends LanguageList implements \Traversable {
+        /**
+         * Unordered list of languages to fetch
+         *
+         * @var string[]
+         */
+        public $languages = [];
+
+        /**
+         * Optionally specify custom main language
+         *
+         * @var string
+         */
+        public $mainLanguage = null;
+    }
+
+    class PrioritizedLanguage extends LanguageList implements \Traversable {
+        /**
+         * Ordered language list
+         *
+         * @var string[]
+         */
+        public $languages = [];
+
+        /**
+         * Optionally specify custom main language
+         *
+         * @var string
+         */
+        public $mainLanguage = null;
+    }
+
+In version one the array will be converted into a `LangaugesFetchAll` object to
+reproduce the current behaviour. We will already document that this behaviour
+will change in version 2 and you *should* pass the correct object already.
+(Emit a deprecated notice?)
+
+In version 2 we will convert incoming arrays into a `PrioritizedLanguage`
+object to make the 99% case easier to use. The conversion is implemented in the
+PAPI.
+
+We therefor must remove the `array` type hint in the SPI and PAPI. With PHP 7.1
+we might be able to add a [`iterable`](https://secure.php.net/manual/en/migration71.new-features.php#migration71.new-features.iterable-pseudo-type)
+type hint again since the `LanguageList` object shall fulfill the
+`Traversable` interface. In the SPI we can allready type hint on
+`LanguageList`.
 
 The SPI should the implement the logic to either fetch only one language
 (`PrioritizedLanguage`), a couple of defined languages (`array`) or all
-available languages (`null`).
+available languages (`LangaugesFetchAll`).
 
 Sooner or later all methods mentioned above might be migrated and extended with
 such a `$translations` parameter. We should prioritize the methods where we
