@@ -150,11 +150,14 @@ means containing all public properties, which the already existing
 classes contain. Since we decorate an API it must be possible to use it
 exactly like the earlier API.
 
-The original value object should be sufficiently convinient to use. We might
-want to add more convience methods to them from time to time for common
-usecases. Every object containign a `$name` of `$description` array probably
-could get a method to easily resolve those. For a different (probably more
-sensible) approach see the `TranslatedString` below.
+We should extend the existing value objects with more convinience methods. As
+outlined below the most important translated properties are `$name` and
+`$description`. We can add `getName()` and `getDescription()` methods to all
+affected value objects.
+
+These methods can either receive a parameter or return the single string, if
+only one is available. They will be accessible in templates using
+`{object.name}`.
 
 SPI Analysis
 ------------
@@ -308,67 +311,8 @@ Sooner or later all methods mentioned above might be migrated and extended with
 such a `$translations` parameter. We should prioritize the methods where we
 expect the largest performance benefits for the overall system. For entities
 where (with the current storage) all languages are always fetched anyways
-(mostly `$name` and `$description`) we might postpone it for anthoer while or
-filter the languages on client side (see `TranslatedString`).
-
-### Soft Migration on Return Values
-
-The problem with a sensible migration path is that all properties containing
-translations are declared as `string[]` now and just contain a hashmap like:
-
-    array(
-        'eng_GB' => 'English string',
-        'ger_DE' => 'Deutsche Zeichenkette',
-        …
-    )
-
-If we now want to make it possible to access the translations in a simpler way
-and make used of the prioritized language list mentioned before we must change
-this data structure. We'd suggest to use a `TranslatedString` object making use
-of an `ArrayObject` extension to maximize compatibility with the existing
-arrays. Even there are some array functions which do not work sensibly with an
-`ArrayObject` this should be good enough.
-
-The `TranslatedString` can the also aggregate the prioritized language list and
-implement a `__toString` method to return a plain correctly translated string
-if accessed this way:
-
-    class TranslatedString extends \ArrayObject
-    {
-        pivate $languages;
-
-        public function __construct(array $strings, array $languages = [])
-        {
-            parent::__construct($strings);
-            $this->languages = $languages;
-        }
-
-        public function __toString()
-        {
-            // @TODO: Implement translation resolving logic
-            return $translatedString;
-        }
-    }
-
-All `string[]` type hints can be changed to `TranslatedString` and it can be
-used anywhere. The `TranslatedString` can and should also work with sparsely
-fetched translations in cases only one translation has been requested and
-loaded.
-
-#### Backwards Compatibility
-
-This is a BC break since there are some functions (mainly sorting) which work
-on plain PHP arrays but not with the `ArrayObject`. We can assume that the
-translations are mostly accessed as hash maps and maybe interated thus we
-should be fine.
-
-#### PAPI Changes
-
-The `TranslatedString` should probably also be propagated through the PAPI to
-the developer using the API. This makes the BC break more critical but also
-eases using the API. Together with the prioritized language list from the
-language decorator and the `TranslatedString` it should resolve a whole class
-of usage issues of the PAPI.
+(mostly `$name` and `$description`) we might postpone it for another while or
+filter the languages on client side.
 
 Language Decorator BC Break
 ---------------------------
